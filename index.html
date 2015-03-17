@@ -1,0 +1,667 @@
+<html>
+<body>
+<script type="text/javascript" src="js/tinyphone_client.js"></script>
+<script type="text/javascript" src="js/three.min.js"></script>
+<script src="js/Projector.js"></script>
+<script src="js/CanvasRenderer.js"></script>
+<script src="js/helvetiker_regular.typeface.js"></script>
+<script src="compo/support.js"></script>
+<script type="text/javascript" src="js/Tone.js"></script>
+<!-- <script src="compo/interface.js"></script> -->
+
+<script>
+	var phoneNumber = "1(206)456-1263";
+	var numberInput = [];
+	var cursor =0;	
+	var cr = "<br/>"; //add a line break to each addition to page.
+	var caller_record = [];
+	var keyCorrect = true;
+
+	var group, text;
+
+	var container;
+	var laneWidth = 512, laneHeight = 1024*5;
+	var height = 600;
+	var lane, frWall, baWall, leWall, riWall;
+	var walls, obstacles, world =[];
+
+
+	var cameraCube, sceneCube;
+	var camera, scene, renderer, light;
+	var windowHalfX = window.innerWidth / 2;
+	var windowHalfY = window.innerHeight / 2;
+	// movements
+	var character, step, head, leftFoot, rightFoot, leftHand, rightHand;
+	var headSize = 32;
+	var characterMesh = new THREE.Object3D(), direction, rays, caster;
+	var isLeftDown, isRightDown, isUpDown, isDownDown, isSpaceDown;
+	var isLeftDown_n, isRightDown_n, isUpDown_n, isDownDown_n;
+
+	// default
+	var nomralMesh= new THREE.Object3D(), head_n, leftHand_n, rightHand_n;
+	
+	var player;
+
+	init();
+	animate();
+
+
+
+
+
+
+
+
+	
+	// ********************************************************* tinyphone ********************************************************
+	// ********************************************************* tinyphone ********************************************************
+
+	tinyphone.init("104.236.42.72",12003,phoneNumber);
+	tinyphone.on('connect', function(){
+		var d = document.getElementById("connected");
+		d.innerHTML="connected to server";
+
+	});
+
+
+	function giveMeNumber() {
+		for (var i=0; i<100; i+=5){
+			var number = getRandomInt(0, 9);
+			numberInput.push(number);
+		}
+		return numberInput;
+		console.log(numberInput);
+	}
+
+	
+	tinyphone.on('new_call', function(caller){
+		var parent = document.getElementById("call_list");
+		var newdiv = document.createElement('div');
+		var nextdiv = document.createElement('div');
+	  	var divIdName = caller.id;
+	  	newdiv.setAttribute('id',divIdName);
+	  	newdiv.setAttribute('style',"background-color: pink; border: 2px solid red;height: 60; width: 150");
+	  	//you could use caller.callerNumber if you don't mind about privacy
+	  	newdiv.innerHTML = 'Caller '+caller.callerLabel+  '<div id="key_'+caller.id+'">keypress: ?</div>'
+	  	nextdiv.innerHTML = 'Please type '+ giveMeNumber();
+	  	parent.appendChild(newdiv);
+	  	parent.appendChild(nextdiv); 
+	  	
+	  	console.log(giveMeNumber());
+	  	caller_record.push(caller.id);
+	  	// ************walking character ***************
+
+	  	
+	  	character();
+	  	
+	  	console.log(caller_record.length);
+	  	// character();
+	  	// scene.add(characterMesh);
+
+	  	window.setInterval(function(){
+	  		if(cursor <= cursor) {
+	  			characterMesh.position.z = laneHeight/2-200;
+	  		}
+	  	}, 5000);
+	});
+
+
+
+
+
+	var lastCursor;
+
+	tinyphone.on('keypress', function(caller){
+		var callDiv = document.getElementById('key_'+caller.id);
+		callDiv.innerHTML="keypress: "+caller.keypress;
+		
+		if (numberInput[cursor] == caller.keypress) {
+			lastCursor = cursor;
+			cursor +=1;
+			console.log("true; " + "cursor = " + cursor + "lastCursor = " + lastCursor);
+		} else {
+			lastCursor = cursor;
+			console.log("false");
+			keyCorrect = false;
+			characterMesh.position.z = laneHeight/2-200;
+		}
+
+		
+
+	});
+
+
+
+	//*********************************************************drawing ************************************************
+	
+	
+	function init(){
+		container = document.createElement( 'div' );
+		document.body.appendChild( container );
+
+		camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 1, 10000 );
+		cameraCube = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 1, 200 )
+		camera.position.y = 900;
+
+		scene = new THREE.Scene();
+		sceneCube = new THREE.Scene();
+
+
+		// text & numbers
+		var theText = giveMeNumber();
+		var text3d = new THREE.TextGeometry( theText, {
+			size: 17,
+			height: 2,
+			curveSegments: 2,
+			font: "helvetiker"
+
+		});
+		textMaterial = new THREE.MeshBasicMaterial( { color: 0x000000, overdraw: 0.5 } );
+		text = new THREE.Mesh(text3d, textMaterial);
+
+		
+
+
+
+
+		
+		var ground = new THREE.PlaneGeometry(laneWidth, laneHeight);
+		var laneMaterial = new THREE.MeshLambertMaterial( { color: 0x999999, visible:false } );
+		lane = new THREE.Mesh(ground, laneMaterial);
+		lane.rotation.x = -Math.PI / 2;
+
+
+
+		scene.add(lane);
+		world.push(lane);
+
+		// var front = new THREE.PlaneGeometry(laneHeight, height);
+		// var back = new THREE.PlaneGeometry(laneHeight, height);
+		// var left = new THREE.PlaneGeometry(laneWidth, height);
+		// var right = new THREE.PlaneGeometry(laneWidth, height);
+		var wallMaterial = new THREE.MeshLambertMaterial( { color: 0x66CCFF, visible:false } );
+		
+		frWall = new THREE.Mesh( new THREE.PlaneGeometry(laneHeight, height), wallMaterial);
+		baWall = new THREE.Mesh( new THREE.PlaneGeometry(laneHeight, height), wallMaterial);
+		leWall = new THREE.Mesh( new THREE.PlaneGeometry(laneWidth, height), wallMaterial);
+		riWall = new THREE.Mesh( new THREE.PlaneGeometry(laneWidth, height), wallMaterial);
+		frWall.rotation.y = -Math.PI / 2; // right
+		frWall.position.x = laneWidth / 2;  
+		frWall.position.y = 55;
+		baWall.rotation.y = Math.PI / 2; // left
+		baWall.position.x = -laneWidth / 2;
+		baWall.position.y = 55;
+		leWall.rotation.y = Math.PI / 2; // front
+		leWall.position.x = laneHeight/2;
+		riWall.position.z = -laneHeight/2; // back
+		scene.add(frWall);
+		scene.add(baWall);
+		scene.add(leWall);
+		scene.add(riWall);
+		world.push(frWall);
+		world.push(baWall);
+		world.push(leWall);
+		world.push(riWall);
+		
+		
+
+
+		 // obstacles
+		for (var i=0; i<50; i++) {
+			var geometry = new THREE.BoxGeometry( 70, 70, 70 );
+			var material = new THREE.MeshLambertMaterial({color: 0xffffff, shading: THREE.FlatShading, wireframe:true});
+			obstacles = new THREE.Mesh(geometry, material);
+			obstacles.position.x = getRandomInt(-200, 200);
+			obstacles.position.y = 55;
+			obstacles.position.z = getRandomInt(-(laneHeight/2-200), laneHeight/2-300);
+			scene.add(obstacles);
+			world.push(obstacles);
+		}
+
+		
+		// phone character
+		{
+			characterMesh.position.y = 55;
+			characterMesh.position.z = laneHeight/2-250;
+			var characterMaterial = new THREE.MeshLambertMaterial({color:0xffffff, wireframe:true});
+			var headGeometry = new THREE.SphereGeometry(headSize, 16, 16);
+			head = new THREE.Mesh(headGeometry, characterMaterial);	
+			var handGeometry = new THREE.SphereGeometry(8, 8, 8);
+			leftHand = new THREE.Mesh(handGeometry, characterMaterial);
+			rightHand = new THREE.Mesh(handGeometry, characterMaterial);
+			var hornGeometry = new THREE.CylinderGeometry(1, 5, 7, 4, 1)
+			var horn = new THREE.Mesh(hornGeometry, characterMaterial);
+		
+			head.position.y = 0;
+			leftHand.position.x = -40;
+			leftHand.position.y = 8;
+			rightHand.position.x = 40;
+			rightHand.position.y = 8;
+			horn.position.y = 10;
+			horn.position.x = 40;
+			
+			characterMesh.add(head);
+			characterMesh.add(leftHand);
+			characterMesh.add(rightHand);
+			characterMesh.add(horn);
+		}
+
+
+		// normal character
+		{
+			nomralMesh.position.y=55;
+			nomralMesh.position.z=laneHeight/2-250;
+			var normalMaterial = new THREE.MeshLambertMaterial({color:0xffffff, shading: THREE.SmoothShading,wireframe:true  });
+			head_n = new THREE.Mesh(headGeometry, normalMaterial);
+			leftHand_n = new THREE.Mesh(handGeometry, normalMaterial);
+			rightHand_n = new THREE.Mesh(handGeometry, normalMaterial);
+
+			head_n.position.y =0;
+			leftHand_n.position.x = -40;
+			leftHand_n.position.y = 8;
+			rightHand_n.position.x = 40;
+			rightHand_n.position.y = 8;
+
+			nomralMesh.add(head_n);
+			nomralMesh.add(rightHand_n);
+			nomralMesh.add(leftHand_n);
+		}
+		// scene.add(nomralMesh);
+
+
+
+
+
+
+		direction = new THREE.Vector3(0, 0, 0);
+		rays = [
+			new THREE.Vector3(0, 0, 1),
+            new THREE.Vector3(1, 0, 1),
+            new THREE.Vector3(1, 0, 0),
+            new THREE.Vector3(1, 0, -1),
+            new THREE.Vector3(0, 0, -1),
+            new THREE.Vector3(-1, 0, -1),
+            new THREE.Vector3(-1, 0, 0),
+            new THREE.Vector3(-1, 0, 1)
+		]
+
+
+		t =100;
+
+		// scene.add(characterMesh);
+		step = 0;
+		// light & renderer
+		var ambient = new THREE.AmbientLight( 0x333333 );
+		scene.add( ambient );
+		light = new THREE.PointLight();
+	    light.position.set(-256, 150, laneHeight/2-200);
+	    scene.add(light);
+		renderer = new THREE.WebGLRenderer();
+		// renderer.autoClear = false;
+		renderer.setClearColor( 0x000000);
+		renderer.setSize( window.innerWidth, window.innerHeight );
+
+		container.appendChild( renderer.domElement );
+	 
+	 	document.addEventListener( 'keydown', onDocumentKeyDown, false );
+		document.addEventListener( 'keyup', onDocumentKeyUp, false );
+
+		window.addEventListener( 'resize', onWindowResize, false );
+	}
+
+	function onWindowResize() {
+
+		windowHalfX = window.innerWidth / 2;
+		windowHalfY = window.innerHeight / 2;
+
+		camera.aspect = window.innerWidth / window.innerHeight;
+		camera.updateProjectionMatrix();
+
+		renderer.setSize( window.innerWidth, window.innerHeight );
+	}
+
+	
+	// collisions
+	var f_vector = new THREE.Vector3( 0, 0, -1 );
+	var b_vector = new THREE.Vector3( 0, 0, 1 );
+	var l_vector = new THREE.Vector3( -1, 0, 0 );
+	var r_vector = new THREE.Vector3( 1, 0, 0 );
+
+	function hitFront(){
+		var caster = new THREE.Raycaster();
+		caster.set(characterMesh.position, f_vector);
+		var intersects = caster.intersectObjects(world);
+		if(intersects.length>0 && intersects[0].distance < headSize ) {
+			characterMesh.position.z = intersects[0].point.z + headSize;
+			player = new Tone.Player("sound/male_scream_short.mp3", function(){
+				player.start();
+				player.toMaster();
+			});
+		} 
+	}
+
+	function hitFront_n () {
+		var caster = new THREE.Raycaster();
+		caster.set(nomralMesh.position, f_vector);
+		var intersects = caster.intersectObjects(world);
+		if(intersects.length>0 && intersects[0].distance < headSize ) {
+			nomralMesh.position.z = intersects[0].point.z + headSize;
+			player = new Tone.Player("sound/ah_lady_scream.mp3", function(){
+				player.start();
+				player.toMaster();
+			});
+		} 
+	}
+
+
+
+
+	function hitBack(){
+		var caster = new THREE.Raycaster();
+		caster.set(characterMesh.position, b_vector);
+		var intersects = caster.intersectObjects(world);
+		if(intersects.length>0 && intersects[0].distance < headSize ) {
+			characterMesh.position.z = intersects[0].point.z - headSize;
+		}
+	}
+
+	function hitBack_n(){
+		var caster = new THREE.Raycaster();
+		caster.set(nomralMesh.position, b_vector);
+		var intersects = caster.intersectObjects(world);
+		if(intersects.length>0 && intersects[0].distance < headSize ) {
+			nomralMesh.position.z = intersects[0].point.z - headSize;
+		}
+	}
+
+
+
+
+
+	function hitRight(){
+		var caster = new THREE.Raycaster();
+		caster.set(characterMesh.position, r_vector);
+		var intersects = caster.intersectObjects(world);
+		if(intersects.length>0 && intersects[0].distance < headSize ) {
+			characterMesh.position.x = intersects[0].point.x - headSize;
+		}
+	}
+	function hitRight_n(){
+		var caster = new THREE.Raycaster();
+		caster.set(nomralMesh.position, r_vector);
+		var intersects = caster.intersectObjects(world);
+		if(intersects.length>0 && intersects[0].distance < headSize ) {
+			nomralMesh.position.x = intersects[0].point.x - headSize;
+		}
+	}
+
+	function hitLeft(){
+		var caster = new THREE.Raycaster();
+		caster.set(characterMesh.position, l_vector);
+		var intersects = caster.intersectObjects(world);
+		if(intersects.length>0 && intersects[0].distance < headSize ) {
+			characterMesh.position.x = intersects[0].point.x + headSize;
+		}
+	}
+	function hitLeft_n(){
+		var caster = new THREE.Raycaster();
+		caster.set(nomralMesh.position, l_vector);
+		var intersects = caster.intersectObjects(world);
+		if(intersects.length>0 && intersects[0].distance < headSize ) {
+			nomralMesh.position.x = intersects[0].point.x + headSize;
+		}
+	}
+
+	
+	function rotate() {
+		var angle = Math.atan2(characterMesh.position.x, -characterMesh.position.z);
+		var difference = angle - characterMesh.rotation.y;
+		if (Math.abs(difference) > Math.PI) {
+            // We proceed to a direct 360° rotation in the opposite way
+            if (difference > 0) { characterMesh.rotation.y += 2 * Math.PI; } else { characterMesh.rotation.y -= 2 * Math.PI; }
+            // And we set a new smarter (because shorter) difference
+            difference = angle - characterMesh.rotation.y;
+            // In short : we make sure not to turn "left" to go "right"
+        }
+        // Now if we haven't reach our target angle
+        if (difference !== 0) {
+            // We slightly get closer to it
+            characterMesh.rotation.y += difference / 4;
+        }
+	}
+	function rotate_n() {
+		var angle = Math.atan2(nomralMesh.position.x, -nomralMesh.position.z);
+		var difference = angle - nomralMesh.rotation.y;
+		if (Math.abs(difference) > Math.PI) {
+            // We proceed to a direct 360° rotation in the opposite way
+            if (difference > 0) { nomralMesh.rotation.y += 2 * Math.PI; } else { nomralMesh.rotation.y -= 2 * Math.PI; }
+            // And we set a new smarter (because shorter) difference
+            difference = angle - nomralMesh.rotation.y;
+            // In short : we make sure not to turn "left" to go "right"
+        }
+        // Now if we haven't reach our target angle
+        if (difference !== 0) {
+            // We slightly get closer to it
+            nomralMesh.rotation.y += difference / 4;
+        }
+	}
+
+	function move() {
+		step += 1 / 4;
+   
+        leftHand.position.setZ(Math.cos(step + (Math.PI / 2)) * 8);
+        rightHand.position.setZ(Math.sin(step) * 8);
+        leftHand_n.position.setZ(Math.cos(step + (Math.PI / 2)) * 8);
+        rightHand_n.position.setZ(Math.sin(step) * 8);
+
+	}
+
+	
+
+
+
+	var characterMaterial;
+	var headGeometry
+	var handGeometry;
+	var footGeometry;
+
+	function character (){
+		// for (var i=0; i<caller_record.length; i++) {
+			
+			scene.add(characterMesh);
+			
+			scene.add(text);
+		// }
+
+	}
+
+
+	
+
+	function onDocumentKeyDown( event ) {
+	// UP key
+
+		switch (event.keyCode) {
+			// up >> move forward
+			case 38: isUpDown = true; break;
+			// back 
+			case 40: isDownDown = true; break;
+			// left
+			case 37: isLeftDown = true; break;
+			// right
+			case 39: isRightDown = true; break;
+			// jump>space
+			case 32: isSpaceDown = true; break;
+
+
+			// normal player
+			// a = left
+			case 65: isLeftDown_n = true; break;
+			// d = right
+			case 68: isRightDown_n = true; break;
+			// w = up
+			case 87: isUpDown_n = true; break;
+			// s = down
+			case 83: isDownDown_n = true; break;
+
+		}
+		// console.log(master.position);
+	}
+
+	function onDocumentKeyUp( event ) {
+
+		switch ( event.keyCode ) {
+			case 17: isCtrlDown = false; break;
+			// up >> move forward
+			case 38: isUpDown = false; break;
+			// back 
+			case 40: isDownDown = false; break;
+			// left
+			case 37: isLeftDown = false; break;
+			// right
+			case 39: isRightDown = false; break;
+			// jump
+			case 32: isSpaceDown = false; break;
+			// normal player
+			// a = left	
+			case 65: isLeftDown_n = false; break;
+			// d = right
+			case 68: isRightDown_n = false; break;
+			// w = up
+			case 87: isUpDown_n = false; break;
+			// s = down
+			case 83: isDownDown_n = false; break;
+		}
+	}
+
+
+
+	function distance(x1, y1, x2, y2) {
+		return Math.sqrt( (x1-x2)*(x1-x2) + (y1-y2)*(y1-y2) );
+	}
+
+
+
+
+
+	function animate(){
+		requestAnimationFrame( animate );
+		render();
+	}
+
+	var t;
+	var d; 
+	function render(){
+		
+		scene.add(nomralMesh);
+
+		if (isDownDown){
+			characterMesh.position.z += 5;
+			hitBack();
+		}
+		if (isUpDown) {
+			characterMesh.position.z -= 5;
+			hitFront();
+			
+		}
+		if(isRightDown){
+			characterMesh.position.x +=5;
+			hitRight();
+		}
+		if(isLeftDown){
+			characterMesh.position.x -=5;
+			hitLeft();
+		}
+
+
+		if (isDownDown_n){
+			nomralMesh.position.z += 5;
+			hitBack_n();
+		}
+		if (isUpDown_n) {
+			nomralMesh.position.z -= 5;
+			hitFront_n();
+			
+		}
+		if(isRightDown_n){
+			nomralMesh.position.x +=5;
+			hitRight_n();
+		}
+		if(isLeftDown_n){
+			nomralMesh.position.x -=5;
+			hitLeft_n();
+		}
+		
+		
+		move();
+		rotate();
+		rotate_n();
+
+		text.position.x = characterMesh.position.x - 100;
+		text.position.y = characterMesh.position.y + 50;
+		text.position.z = characterMesh.position.z -50;
+
+		
+		
+		camera.position.set(characterMesh.position.x, characterMesh.position.y + t, characterMesh.position.z + 300);
+		camera.lookAt(characterMesh.position);
+		renderer.render( scene, camera );
+
+		
+
+
+		// t = t+0.1;
+		if (600 < d ) {
+			// t = 550;
+			t += 0.5;
+		 } 
+		// else if (  650 < d && d <800 ) {
+		// 	t = 900;
+		// } else if ( 800 < d && d < 1000) {
+		// 	t =1200;
+		// }
+
+		else {
+			// t = 100;
+			t = t+0.05;
+		}
+		d = distance(nomralMesh.position.x, nomralMesh.position.z, characterMesh.position.x, characterMesh.position.z);
+
+
+
+
+		// console.log(d);
+		// console.log("camera: " +camera.position.y);
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</script>
+<h3>
+<div id="phone_number">call <script>document.write(phoneNumber)</script></div>
+</h3>
+<div id="connected">disconnected</div>
+<div id="call_list"></div>
+<div id="number_list"></div>
+</body>
+</html>
